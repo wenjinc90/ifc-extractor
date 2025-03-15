@@ -3,20 +3,56 @@ import ifcopenshell
 import tempfile
 import os
 
+st.set_page_config(layout="wide")  # Makes the app use full screen width
+
+st.markdown("""
+    <style>
+        .stDataFrame {
+            font-size: 12px;
+        }
+        .stDataFrame [data-testid="stHorizontalScrollbarContent"] {
+            min-height: 450px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
 st.title("IFC Model Extractor")
-st.write("Upload your IFC file to extract model elements")
+st.write("Upload your IFC file or select a sample file to extract model elements")
 
-uploaded_file = st.file_uploader("Choose an IFC file", type=['ifc'])
+# Add radio button for selection
+input_method = st.radio(
+    "Choose input method:",
+    ("Upload your own IFC file", "Use sample IFC file")
+)
 
-if uploaded_file is not None:
-    # Save uploaded file temporarily
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.ifc') as tmp_file:
-        tmp_file.write(uploaded_file.getvalue())
-        tmp_file_path = tmp_file.name
+if input_method == "Upload your own IFC file":
+    uploaded_file = st.file_uploader("Choose an IFC file", type=['ifc'])
+    file_to_process = uploaded_file
+else:
+    # List sample files from the samples directory
+    sample_files = [f for f in os.listdir("samples") if f.endswith('.ifc')]
+    if sample_files:
+        selected_sample = st.selectbox(
+            "Select a sample IFC file",
+            sample_files
+        )
+        file_to_process = os.path.join("samples", selected_sample)
+    else:
+        st.error("No sample IFC files found in samples directory")
+        file_to_process = None
 
+if file_to_process is not None:
     try:
-        # Load the IFC file
-        ifc_file = ifcopenshell.open(tmp_file_path)
+        # Handle both uploaded and sample files
+        if isinstance(file_to_process, str):
+            # Sample file - direct path
+            ifc_file = ifcopenshell.open(file_to_process)
+        else:
+            # Uploaded file - needs temporary handling
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.ifc') as tmp_file:
+                tmp_file.write(file_to_process.getvalue())
+                tmp_file_path = tmp_file.name
+            ifc_file = ifcopenshell.open(tmp_file_path)
         
         # Get all element types in the model
         element_types = set(element.is_a() for element in ifc_file)
@@ -86,12 +122,18 @@ if uploaded_file is not None:
                         st.error(f"Error processing element: {e}")
                 
                 if element_data:
-                    st.table(element_data)
+                    st.dataframe(
+                        element_data,
+                        use_container_width=True,
+                        hide_index=True,
+                        height=400  # Adjust this value based on your needs
+                    )
         
     except Exception as e:
         st.error(f"Error processing IFC file: {e}")
     finally:
-        # Clean up temporary file
-        os.unlink(tmp_file_path)
+        # Clean up temporary file only for uploads
+        if isinstance(file_to_process, str) == False and 'tmp_file_path' in locals():
+            os.unlink(tmp_file_path)
 else:
-    st.info("Please upload an IFC file to begin")
+    st.info("Please select or upload an IFC file to begin")

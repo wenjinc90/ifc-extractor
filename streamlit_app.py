@@ -88,45 +88,86 @@ if file_to_process is not None:
                             "GUID": element.GlobalId
                         }
                         
-                        # Get location
+                        # Get global coordinates
                         if hasattr(element, "ObjectPlacement"):
                             placement = element.ObjectPlacement
                             if hasattr(placement, "RelativePlacement"):
                                 location = placement.RelativePlacement.Location
                                 if location:
                                     data.update({
-                                        "X": round(location.Coordinates[0], 2),
-                                        "Y": round(location.Coordinates[1], 2),
-                                        "Z": round(location.Coordinates[2], 2)
+                                        "Global X": round(location.Coordinates[0], 2),
+                                        "Global Y": round(location.Coordinates[1], 2),
+                                        "Global Z": round(location.Coordinates[2], 2)
                                     })
                         
-                        # Get dimensions
+                        # Get geometry and dimensions
                         if hasattr(element, "Representation"):
-                            rep = element.Representation
-                            if rep:
+                            try:
+                                # Get bounding box dimensions
+                                if element.Representation.Representations:
+                                    representation = element.Representation.Representations[0]
+                                    if representation.Items:
+                                        item = representation.Items[0]
+                                        if hasattr(item, "BoundingBox"):
+                                            bbox = item.BoundingBox
+                                            if bbox:
+                                                data.update({
+                                                    "Bounding Box Length": round(bbox.XDim, 2),
+                                                    "Bounding Box Width": round(bbox.YDim, 2),
+                                                    "Bounding Box Height": round(bbox.ZDim, 2)
+                                                })
+                                
                                 # Get quantities from property sets
                                 for definition in element.IsDefinedBy:
                                     if definition.is_a("IfcRelDefinesByProperties"):
                                         property_set = definition.RelatingPropertyDefinition
+                                        
+                                        # Get base quantities
                                         if property_set.is_a("IfcElementQuantity"):
                                             for quantity in property_set.Quantities:
                                                 if quantity.is_a("IfcQuantityLength"):
-                                                    data[quantity.Name] = round(quantity.LengthValue, 2)
+                                                    data[f"Length_{quantity.Name}"] = round(quantity.LengthValue, 2)
                                                 elif quantity.is_a("IfcQuantityArea"):
-                                                    data[quantity.Name] = round(quantity.AreaValue, 2)
+                                                    data[f"Area_{quantity.Name}"] = round(quantity.AreaValue, 2)
                                                 elif quantity.is_a("IfcQuantityVolume"):
-                                                    data[quantity.Name] = round(quantity.VolumeValue, 2)
+                                                    data[f"Volume_{quantity.Name}"] = round(quantity.VolumeValue, 2)
+                                        
+                                        # Get additional properties
+                                        elif property_set.is_a("IfcPropertySet"):
+                                            for prop in property_set.HasProperties:
+                                                if prop.is_a("IfcPropertySingleValue"):
+                                                    if prop.NominalValue is not None:
+                                                        value = prop.NominalValue.wrappedValue
+                                                        if isinstance(value, (int, float)):
+                                                            data[f"Property_{prop.Name}"] = round(value, 2)
+                                                        else:
+                                                            data[f"Property_{prop.Name}"] = value
+                            except Exception as e:
+                                st.warning(f"Could not extract all properties for element {element.GlobalId}: {str(e)}")
+                        
+                        # Get material properties if available
+                        try:
+                            if hasattr(element, "HasAssociations"):
+                                for association in element.HasAssociations:
+                                    if association.is_a("IfcRelAssociatesMaterial"):
+                                        relating_material = association.RelatingMaterial
+                                        if hasattr(relating_material, "Name"):
+                                            data["Material"] = relating_material.Name
+                                        elif hasattr(relating_material, "ForLayerSet"):
+                                            data["Material"] = "Layered Material"
+                        except Exception as e:
+                            pass
                         
                         element_data.append(data)
                     except Exception as e:
-                        st.error(f"Error processing element: {e}")
+                        st.error(f"Error processing element {element.GlobalId}: {str(e)}")
                 
                 if element_data:
                     st.dataframe(
                         element_data,
                         use_container_width=True,
                         hide_index=True,
-                        height=400  # Adjust this value based on your needs
+                        height=400
                     )
         
     except Exception as e:

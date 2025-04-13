@@ -5,6 +5,7 @@ import tempfile
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 st.set_page_config(layout="wide")
 
@@ -184,6 +185,7 @@ if file_to_process is not None:
                     
                     st.write("### Element Information")
                     st.dataframe(element_info)
+                    
                 else:
                     st.warning("Please select at least one level to view")
             else:
